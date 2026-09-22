@@ -1,8 +1,29 @@
 # Tiny CNI
 
+[![CI](https://github.com/PatienceEnoch/tiny-cni/actions/workflows/tests.yml/badge.svg)](https://github.com/PatienceEnoch/tiny-cni/actions/workflows/tests.yml)
+
 Build the network a container would need, one Linux command at a time.
 
 **CNI stands for Container Network Interface**: a standard for how container runtimes ask plugins to configure networking. Tiny CNI is a learning project that builds the underlying pieces—isolated network environments, virtual cables, a virtual switch, and IP addresses—in Python. Implementing the standard CNI plugin interface is a future step.
+
+## Architecture
+
+```mermaid
+flowchart LR
+    A["cni-a<br/>10.244.0.2"] -->|veth| B["cni0 bridge<br/>10.244.0.1"]
+    C["cni-b<br/>10.244.0.3"] -->|veth| B
+    D["cni-c<br/>10.244.0.4"] -->|veth| B
+    B --> H["Ubuntu host<br/>routing + firewall"]
+    H --> N["NAT / masquerade"]
+    N --> I["Internet"]
+```
+
+## Proof it works
+
+- **24 automated tests** cover validation, deterministic interface naming, IP allocation, and endpoint health checks.
+- **GitHub Actions CI** runs Ruff and pytest on every push and pull request.
+- A Tiny CNI endpoint has resolved DNS, reached the public internet, and completed a real HTTPS request returning **HTTP/2 200**.
+- The `check` command reports namespace, IPv4, gateway, bridge, DNS, internet, and overall health in one command.
 
 ## What it does
 
@@ -19,7 +40,7 @@ The script includes:
 - A `setup` command that discovers the outgoing interface, enables IPv4 forwarding, and adds missing firewall and NAT rules.
 - A `check` command that reports namespace, IPv4, gateway, bridge, DNS, and internet health for an endpoint.
 - Automated pytest coverage for validation, IP allocation, interface naming, and endpoint health checks.
-- GitHub Actions CI that runs the test suite automatically on pushes and pull requests.
+- GitHub Actions CI that runs Ruff linting and the test suite automatically on pushes and pull requests.
 
 ## Try it
 
@@ -142,6 +163,25 @@ The host setup check exercised existing-rule detection; installing missing rules
 
 The injected failure occurred before DNS setup, so that test did not verify cleanup after a DNS-file write failure.
 
+## Development
+
+Create an isolated Python environment and install the development tools:
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install pytest ruff
+```
+
+Run the same checks used by CI:
+
+```bash
+ruff check .
+pytest -q
+```
+
+Pytest and Ruff configuration lives in `pyproject.toml`.
+
 ## Current boundaries
 
 This is a single-host learning tool. Address discovery covers the host and its named namespaces; it does not discover every device on an external network. The lock coordinates commands using the same lock file, not unrelated networking tools.
@@ -179,7 +219,7 @@ The development lab has verified local namespace-to-namespace traffic, internet 
 
 ### Next work
 
-1. Add deeper failure reporting to `check` so it can explain why a health check failed.
+1. Add optional machine-readable output to `check` for automation.
 2. Expand automated coverage around deletion, rollback, DNS cleanup, and host setup.
 3. Verify `setup` on a fresh host where the firewall and NAT rules do not already exist.
 4. Consider persistent IP allocation state instead of relying only on live address discovery.
