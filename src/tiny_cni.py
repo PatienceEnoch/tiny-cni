@@ -285,6 +285,75 @@ def list_networks():
 
 
 
+
+def check_network(name):
+    validate_name(name)
+
+    print(f"Checking {name}")
+
+    if not namespace_exists(name):
+        print("  Namespace:  FAIL")
+        raise SystemExit(1)
+
+    print("  Namespace:  OK")
+
+    result = subprocess.run(
+        ["ip", "-n", name, "-j", "-4", "addr", "show"],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    interfaces = json.loads(result.stdout)
+
+    ipv4_address = None
+    for interface in interfaces:
+        if interface["ifname"] == "lo":
+            continue
+
+        for address in interface.get("addr_info", []):
+            if address.get("family") == "inet":
+                ipv4_address = (
+                    f'{address["local"]}/{address["prefixlen"]}'
+                )
+                break
+
+    if ipv4_address:
+        print(f"  IPv4:       {ipv4_address}")
+    else:
+        print("  IPv4:       FAIL")
+
+    gateway = subprocess.run(
+        ["ip", "-n", name, "route", "show", "default"],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+
+    if f"via {GATEWAY}" in gateway.stdout:
+        print("  Gateway:    OK")
+    else:
+        print("  Gateway:    FAIL")
+
+    bridge_ok = link_exists(BRIDGE)
+    print(f"  Bridge:     {'OK' if bridge_ok else 'FAIL'}")
+
+    dns = subprocess.run(
+        ["ip", "netns", "exec", name, "getent", "hosts", "example.com"],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+    print(f"  DNS:        {'OK' if dns.returncode == 0 else 'FAIL'}")
+
+    internet = subprocess.run(
+        ["ip", "netns", "exec", name, "ping", "-c", "1", "-W", "2", "1.1.1.1"],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+    print(
+        f"  Internet:   {'OK' if internet.returncode == 0 else 'FAIL'}"
+    )
+
+
 def setup_network():
     result = subprocess.run(
         ["ip", "-j", "-4", "route", "show", "default"],
@@ -361,6 +430,9 @@ def main():
 
     subparsers.add_parser("setup", help="configure host forwarding, firewall, and NAT")
 
+    check_parser = subparsers.add_parser("check", help="check network endpoint health")
+    check_parser.add_argument("name")
+
     args = parser.parse_args()
 
     with open("/run/tiny-cni.lock", "a") as lock:
@@ -373,6 +445,8 @@ def main():
             list_networks()
         elif args.command == "setup":
             setup_network()
+        elif args.command == "check":
+            check_network(args.name)
 
 
 if __name__ == "__main__":

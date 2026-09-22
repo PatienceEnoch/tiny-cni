@@ -96,3 +96,81 @@ def test_choose_ip_automatically_selects_first_free_address(monkeypatch):
     )
 
     assert tiny_cni.choose_ip(None) == "10.244.0.2/24"
+
+
+def test_check_network_healthy(monkeypatch, capsys):
+    monkeypatch.setattr(tiny_cni, "namespace_exists", lambda name: True)
+    monkeypatch.setattr(tiny_cni, "link_exists", lambda name: True)
+
+    results = iter([
+        type("Result", (), {
+            "stdout": '[{"ifname":"eth0","addr_info":[{"family":"inet","local":"10.244.0.2","prefixlen":24}]}]',
+            "returncode": 0,
+        })(),
+        type("Result", (), {
+            "stdout": "default via 10.244.0.1 dev eth0\n",
+            "returncode": 0,
+        })(),
+        type("Result", (), {"stdout": "", "returncode": 0})(),
+        type("Result", (), {"stdout": "", "returncode": 0})(),
+    ])
+
+    monkeypatch.setattr(
+        tiny_cni.subprocess,
+        "run",
+        lambda *args, **kwargs: next(results),
+    )
+
+    tiny_cni.check_network("cni-a")
+
+    output = capsys.readouterr().out
+
+    assert "Namespace:  OK" in output
+    assert "IPv4:       10.244.0.2/24" in output
+    assert "Gateway:    OK" in output
+    assert "Bridge:     OK" in output
+    assert "DNS:        OK" in output
+    assert "Internet:   OK" in output
+
+
+def test_check_network_missing_namespace(monkeypatch):
+    monkeypatch.setattr(tiny_cni, "namespace_exists", lambda name: False)
+
+    with pytest.raises(SystemExit) as error:
+        tiny_cni.check_network("missing")
+
+    assert error.value.code == 1
+
+
+def test_check_network_reports_failures(monkeypatch, capsys):
+    monkeypatch.setattr(tiny_cni, "namespace_exists", lambda name: True)
+    monkeypatch.setattr(tiny_cni, "link_exists", lambda name: False)
+
+    results = iter([
+        type("Result", (), {
+            "stdout": '[{"ifname":"eth0","addr_info":[]}]',
+            "returncode": 0,
+        })(),
+        type("Result", (), {
+            "stdout": "",
+            "returncode": 0,
+        })(),
+        type("Result", (), {"stdout": "", "returncode": 1})(),
+        type("Result", (), {"stdout": "", "returncode": 1})(),
+    ])
+
+    monkeypatch.setattr(
+        tiny_cni.subprocess,
+        "run",
+        lambda *args, **kwargs: next(results),
+    )
+
+    tiny_cni.check_network("cni-a")
+
+    output = capsys.readouterr().out
+
+    assert "IPv4:       FAIL" in output
+    assert "Gateway:    FAIL" in output
+    assert "Bridge:     FAIL" in output
+    assert "DNS:        FAIL" in output
+    assert "Internet:   FAIL" in output
