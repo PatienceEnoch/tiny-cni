@@ -4,7 +4,7 @@
 
 Build the network a container would need, one Linux command at a time.
 
-**CNI stands for Container Network Interface**: a standard for how container runtimes ask plugins to configure networking. Tiny CNI is a learning project that builds the underlying pieces—isolated network environments, virtual cables, a virtual switch, and IP addresses—in Python. Implementing the standard CNI plugin interface is a future step.
+**CNI stands for Container Network Interface**: a standard for how container runtimes ask plugins to configure networking. Tiny CNI is a learning project that builds the underlying pieces... isolated network environments, virtual cables, a virtual switch, and IP addresses—in Python. Implementing the standard CNI plugin interface is a future step.
 
 ## Architecture
 
