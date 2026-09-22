@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import argparse
+import fcntl
 import hashlib
 import json
 import ipaddress
@@ -221,10 +222,12 @@ def main():
 
     args = parser.parse_args()
 
-    if args.command == "add":
-        add_network(args.name, args.ip)
-    elif args.command == "del":
-        delete_network(args.name)
+    with open("/run/tiny-cni.lock", "a") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        if args.command == "add":
+            add_network(args.name, args.ip)
+        elif args.command == "del":
+            delete_network(args.name)
 
 
 if __name__ == "__main__":
