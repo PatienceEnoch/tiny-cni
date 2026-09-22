@@ -102,6 +102,14 @@ sudo python3 src/tiny_cni.py del demo-b
 | **Connection tracking (conntrack)** | Keeping track of traffic flows so firewall rules can recognize replies and related traffic. |
 | **Masquerading** | A form of source NAT that uses the outgoing interface's address. |
 | **Idempotence** | Repeating an operation without accumulating duplicate changes. |
+| **ARP — Address Resolution Protocol** | Finds the MAC address associated with a nearby IPv4 address. |
+| **MAC — Media Access Control address** | An address used to deliver Ethernet frames on a local network. |
+| **FDB — Forwarding Database** | The bridge's table mapping learned MAC addresses to ports or interfaces. |
+| **ICMP — Internet Control Message Protocol** | Carries network control messages; ping uses echo requests and replies. |
+| **TCP — Transmission Control Protocol** | Provides reliable, ordered delivery over a connection. |
+| **HTTP — Hypertext Transfer Protocol** | The request-and-response protocol used by web clients and servers. |
+| **HTTPS — HTTP over TLS** | HTTP protected by Transport Layer Security, which encrypts the connection. |
+| **SYN / ACK / FIN** | TCP flags meaning synchronize, acknowledgment, and finish. They help establish, acknowledge, and close connections. |
 | **Lock** | Makes cooperating commands wait their turn before changing shared resources. |
 | **Rollback** | Undoes completed setup steps after a later step fails. |
 
@@ -129,3 +137,38 @@ The shared bridge and host setup rules remain after endpoint deletion or endpoin
 Forwarding and firewall changes apply to the running system; this script does not persist them across reboot. Rerun `setup` and recreate endpoints after reboot. Per-namespace DNS directories under `/etc/netns` can survive reboot, and `add` refuses to overwrite them. For a previously created endpoint, use `del NAME` to clean its leftover configuration before recreating it.
 
 The script currently has no persistent allocation database or standard CNI runtime integration.
+
+## Packet walkthroughs — September 22, 2026
+
+These observations come from an interactive Ubuntu lab session. They are manual demonstrations, not an automated test suite. Packet details below were copied or summarized from terminal output; no packet capture files were saved in the repository.
+
+| Demonstration | Observed result |
+|---|---|
+| Local web request | Client `cni-d` reached a Python HTTP server on `cni-c`, port 8000, and received `200 OK`. |
+| ICMP on the bridge | Three echo requests from `cni-d` and three replies from `cni-c`. |
+| NAT on the host | Outbound source changed from endpoint `10.244.0.5` to Ubuntu uplink `10.10.10.10`. Returning traffic was translated back to the endpoint. This captures one NAT step, not upstream translation. |
+| Local vs. external routes | The neighbor was reached directly through `eth0`; Cloudflare `1.1.1.1` used gateway `10.244.0.1`. |
+| ARP exchange | `cni-d` asked who owned `10.244.0.4`, and `cni-c` replied with its MAC address. A reverse neighbor check followed. |
+| Bridge learning | After a ping, the FDB contained both endpoint MAC addresses on their respective host-side veth interfaces. |
+| Missing default route | Removing only `cni-d`'s default route left local ping working but caused internet ping to report “Network is unreachable.” Replies returned after restoring the route. |
+| DNS exchange | One IPv4 lookup for `example.com` and a reply containing two addresses, about 34 milliseconds later. |
+| Encrypted web request | `curl -I https://example.com` from `cni-d` returned `HTTP/2 200`. |
+| TCP lifecycle | Captured SYN, SYN-ACK, ACK; a 79-byte HTTP request; 156 bytes of response headers; and orderly connection closure. |
+
+The client was `cni-d — 10.244.0.5`; the local server was `cni-c — 10.244.0.4`. Their host-side virtual cable interfaces were `tc-f61fd4-h` and `tc-dee853-h`, respectively.
+
+### Stopping point and next work
+
+Paused after the TCP handshake walkthrough. The endpoint link was restored and local replies confirmed; the default route was restored and internet replies confirmed. Stop any remaining foreground web server or tcpdump process with Ctrl+C before leaving the lab.
+
+At the last namespace listing, the lab contained `cni-a` through `cni-e` at `10.244.0.2` through `10.244.0.6`, plus `cni-reuse` at `10.244.0.7`. Live state may differ after a reboot.
+
+On return:
+
+1. Pull documentation updates with `git pull --ff-only`.
+2. Run `sudo python3 src/tiny_cni.py list` to inspect the live state.
+3. Recap the packet path, then turn the manual checks into repeatable tests.
+4. Review deletion, error handling, and DNS cleanup after write failures; verify fresh-host setup.
+5. Treat standard CNI runtime integration as a separate phase.
+
+After a reboot, follow the recreation notes above; Git preserves the code and documentation, not live namespaces or virtual links.
