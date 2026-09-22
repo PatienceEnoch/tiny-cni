@@ -2,6 +2,7 @@
 
 import argparse
 import hashlib
+import json
 import ipaddress
 import re
 import subprocess
@@ -68,11 +69,61 @@ def validate_ip(value):
         raise SystemExit("That address is reserved for the network, gateway, or broadcast")
 
 
+
+def used_ipv4_addresses():
+    def read_json(*args):
+        result = subprocess.run(
+            args, capture_output=True, text=True, check=True
+        )
+        return json.loads(result.stdout)
+
+    used = set()
+
+    def collect(interfaces):
+        for interface in interfaces:
+            for address in interface.get("addr_info", []):
+                if address.get("family") == "inet":
+                    used.add(ipaddress.IPv4Address(address["local"]))
+
+    collect(read_json("ip", "-j", "-4", "addr", "show"))
+
+    for namespace in read_json("ip", "-j", "netns", "list"):
+        collect(read_json(
+            "ip", "-n", namespace["name"],
+            "-j", "-4", "addr", "show",
+        ))
+
+    return used
+
+
+def choose_ip(requested):
+    network = ipaddress.IPv4Network(BRIDGE_IP, strict=False)
+
+    if requested is not None:
+        validate_ip(requested)
+
+    used = used_ipv4_addresses()
+    used.add(ipaddress.IPv4Address(GATEWAY))
+
+    if requested is not None:
+        address = ipaddress.IPv4Interface(requested)
+        if address.ip in used:
+            raise SystemExit(f"Address {address.ip} is already in use")
+        return str(address)
+
+    for address in network.hosts():
+        if address not in used:
+            return f"{address}/{network.prefixlen}"
+
+    raise SystemExit(f"No available addresses in {network}")
+
+
 def add_network(name, ip_address):
     validate_name(name)
-    validate_ip(ip_address)
     if namespace_exists(name):
         raise SystemExit(f"Namespace {name!r} already exists")
+
+    ip_address = choose_ip(ip_address)
 
     host_veth, peer_veth = interface_names(name)
 
@@ -161,7 +212,9 @@ def main():
 
     add_parser = subparsers.add_parser("add", help="create network endpoint")
     add_parser.add_argument("name")
-    add_parser.add_argument("ip")
+    add_parser.add_argument(
+        "ip", nargs="?", help="IPv4 address with /24; omit to choose automatically"
+    )
 
     del_parser = subparsers.add_parser("del", help="delete network endpoint")
     del_parser.add_argument("name")
