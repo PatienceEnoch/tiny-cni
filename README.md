@@ -17,6 +17,9 @@ The script includes:
 - A delete command for removing an endpoint and its DNS configuration.
 - A `list` command showing interfaces and IPv4 addresses across all named namespaces, including manually created ones.
 - A `setup` command that discovers the outgoing interface, enables IPv4 forwarding, and adds missing firewall and NAT rules.
+- A `check` command that reports namespace, IPv4, gateway, bridge, DNS, and internet health for an endpoint.
+- Automated pytest coverage for validation, IP allocation, interface naming, and endpoint health checks.
+- GitHub Actions CI that runs the test suite automatically on pushes and pull requests.
 
 ## Try it
 
@@ -52,7 +55,15 @@ sudo python3 src/tiny_cni.py list
 
 This includes namespaces created outside Tiny CNI. Listing an endpoint does not prove it has connectivity.
 
-Check the first endpoint's address and test its connection to the bridge gateway:
+Run a health check on an endpoint:
+
+```bash
+sudo python3 src/tiny_cni.py check demo-a
+```
+
+`check` verifies that the namespace exists, finds its IPv4 address, checks its default gateway and the `cni0` bridge, then tests DNS resolution and internet reachability.
+
+You can also inspect the endpoint directly and test its connection to the bridge gateway:
 
 ```bash
 sudo ip netns exec demo-a ip -br addr
@@ -115,6 +126,9 @@ sudo python3 src/tiny_cni.py del demo-b
 
 ## Checked in the development lab
 
+- 24 automated pytest cases pass locally and through GitHub Actions CI.
+- The `check` command reports healthy namespace, IPv4, gateway, bridge, DNS, and internet status for `cni-a`.
+- HTTPS application traffic from `cni-d` to `https://example.com` returned `HTTP/2 200`.
 - Gateway reachability, internet reachability by IP, and DNS resolution from an endpoint.
 - Communication between two namespaces through the bridge.
 - Automatic address selection and rejection of duplicate or reserved addresses.
@@ -157,18 +171,19 @@ These observations come from an interactive Ubuntu lab session. They are manual 
 
 The client was `cni-d — 10.244.0.5`; the local server was `cni-c — 10.244.0.4`. Their host-side virtual cable interfaces were `tc-f61fd4-h` and `tc-dee853-h`, respectively.
 
-### Stopping point and next work
+### Current milestone
 
-Paused after the TCP handshake walkthrough. The endpoint link was restored and local replies confirmed; the default route was restored and internet replies confirmed. Stop any remaining foreground web server or tcpdump process with Ctrl+C before leaving the lab.
+Tiny CNI now has working endpoint creation and deletion, automatic IPv4 allocation, bridge networking, host forwarding and NAT setup, DNS configuration, endpoint listing, and an endpoint health-check command.
 
-At the last namespace listing, the lab contained `cni-a` through `cni-e` at `10.244.0.2` through `10.244.0.6`, plus `cni-reuse` at `10.244.0.7`. Live state may differ after a reboot.
+The development lab has verified local namespace-to-namespace traffic, internet reachability by IP, DNS resolution, HTTPS traffic, route-failure behavior, ARP, bridge learning, NAT, and the TCP connection lifecycle. The Python logic is covered by 24 automated tests, and the same test suite runs automatically in GitHub Actions.
 
-On return:
+### Next work
 
-1. Pull documentation updates with `git pull --ff-only`.
-2. Run `sudo python3 src/tiny_cni.py list` to inspect the live state.
-3. Recap the packet path, then turn the manual checks into repeatable tests.
-4. Review deletion, error handling, and DNS cleanup after write failures; verify fresh-host setup.
+1. Add deeper failure reporting to `check` so it can explain why a health check failed.
+2. Expand automated coverage around deletion, rollback, DNS cleanup, and host setup.
+3. Verify `setup` on a fresh host where the firewall and NAT rules do not already exist.
+4. Consider persistent IP allocation state instead of relying only on live address discovery.
 5. Treat standard CNI runtime integration as a separate phase.
 
-After a reboot, follow the recreation notes above; Git preserves the code and documentation, not live namespaces or virtual links.
+After a reboot, rerun `setup` and recreate endpoints as needed; Git preserves the code and documentation, not live namespaces or virtual links.
+
