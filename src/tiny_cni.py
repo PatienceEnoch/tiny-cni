@@ -234,6 +234,56 @@ def delete_network(name):
     print(f"Deleted {name}")
 
 
+
+def list_networks():
+    def read_json(*args):
+        result = subprocess.run(
+            args, capture_output=True, text=True, check=True
+        )
+        return json.loads(result.stdout)
+
+    namespaces = read_json("ip", "-j", "netns", "list")
+    rows = []
+
+    for namespace in sorted(namespaces, key=lambda item: item["name"]):
+        name = namespace["name"]
+        interfaces = read_json(
+            "ip", "-n", name, "-j", "-4", "addr", "show"
+        )
+        found = False
+        for interface in interfaces:
+            if interface["ifname"] == "lo":
+                continue
+            addresses = [
+                f'{address["local"]}/{address["prefixlen"]}'
+                for address in interface.get("addr_info", [])
+                if address.get("family") == "inet"
+            ]
+            rows.append((
+                name,
+                interface["ifname"],
+                ", ".join(addresses) or "(no IPv4 address)",
+            ))
+            found = True
+        if not found:
+            rows.append((name, "(no non-loopback interface)", "-"))
+
+    if not rows:
+        print("No named network namespaces found.")
+        return
+
+    headers = ("NAMESPACE", "INTERFACE", "IPv4 ADDRESS")
+    widths = [
+        max(len(row[index]) for row in [headers] + rows)
+        for index in range(3)
+    ]
+    for row in [headers] + rows:
+        print("  ".join(
+            value.ljust(widths[index])
+            for index, value in enumerate(row)
+        ))
+
+
 def main():
     parser = argparse.ArgumentParser(description="Tiny CNI")
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -247,6 +297,8 @@ def main():
     del_parser = subparsers.add_parser("del", help="delete network endpoint")
     del_parser.add_argument("name")
 
+    subparsers.add_parser("list", help="show all named namespaces and IPv4 addresses")
+
     args = parser.parse_args()
 
     with open("/run/tiny-cni.lock", "a") as lock:
@@ -255,6 +307,8 @@ def main():
             add_network(args.name, args.ip)
         elif args.command == "del":
             delete_network(args.name)
+        elif args.command == "list":
+            list_networks()
 
 
 if __name__ == "__main__":
