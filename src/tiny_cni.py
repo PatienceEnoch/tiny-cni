@@ -33,77 +33,112 @@ def link_exists(name):
     ).returncode == 0
 
 
+def interface_names(name):
+    short_id = hashlib.sha1(name.encode()).hexdigest()[:6]
+    return f"tc-{short_id}-h", f"tc-{short_id}-p"
+
+
 def add_network(name, ip_address):
     if namespace_exists(name):
         raise SystemExit(f"Namespace {name!r} already exists")
 
-    # Linux interface names can only be 15 characters long.
-    short_id = hashlib.sha1(name.encode()).hexdigest()[:6]
-    host_veth = f"tc-{short_id}-h"
-    peer_veth = f"tc-{short_id}-p"
+    host_veth, peer_veth = interface_names(name)
 
-    # Create the bridge if necessary.
     if not link_exists(BRIDGE):
         run("ip", "link", "add", BRIDGE, "type", "bridge")
 
     run("ip", "addr", "replace", BRIDGE_IP, "dev", BRIDGE)
     run("ip", "link", "set", BRIDGE, "up")
 
-    # Create an isolated network namespace.
     run("ip", "netns", "add", name)
 
-    # Create the virtual Ethernet cable.
     run(
         "ip", "link", "add", host_veth,
         "type", "veth",
         "peer", "name", peer_veth,
     )
 
-    # Move one end into the namespace.
     run("ip", "link", "set", peer_veth, "netns", name)
 
-    # Plug the host end into our Linux bridge.
     run("ip", "link", "set", host_veth, "master", BRIDGE)
     run("ip", "link", "set", host_veth, "up")
 
-    # Inside the namespace, make the interface look container-like.
     run("ip", "netns", "exec", name, "ip", "link", "set", "lo", "up")
+
     run(
         "ip", "netns", "exec", name,
         "ip", "link", "set", peer_veth, "name", "eth0",
     )
-    run("ip", "netns", "exec", name, "ip", "link", "set", "eth0", "up")
 
-    # Assign the container IP and gateway.
+    run(
+        "ip", "netns", "exec", name,
+        "ip", "link", "set", "eth0", "up",
+    )
+
     run(
         "ip", "netns", "exec", name,
         "ip", "addr", "add", ip_address, "dev", "eth0",
     )
+
     run(
         "ip", "netns", "exec", name,
         "ip", "route", "add", "default", "via", GATEWAY,
     )
 
-    # Namespace-specific DNS configuration.
     dns_dir = Path("/etc/netns") / name
     dns_dir.mkdir(parents=True, exist_ok=True)
     (dns_dir / "resolv.conf").write_text("nameserver 1.1.1.1\n")
 
     print()
     print(f"Created {name}")
-    print(f"  IP:      {ip_address}")
-    print(f"  Gateway: {GATEWAY}")
-    print(f"  Bridge:  {BRIDGE}")
+    print(f"  IP:        {ip_address}")
+    print(f"  Gateway:   {GATEWAY}")
+    print(f"  Bridge:    {BRIDGE}")
     print(f"  Host veth: {host_veth}")
 
 
+def delete_network(name):
+    host_veth, _ = interface_names(name)
+
+    if namespace_exists(name):
+        run("ip", "netns", "del", name)
+    elif link_exists(host_veth):
+        run("ip", "link", "del", host_veth)
+    else:
+        print(f"No network namespace or veth found for {name}")
+
+    dns_dir = Path("/etc/netns") / name
+    dns_file = dns_dir / "resolv.conf"
+
+    if dns_file.exists():
+        dns_file.unlink()
+
+    if dns_dir.exists():
+        try:
+            dns_dir.rmdir()
+        except OSError:
+            pass
+
+    print(f"Deleted {name}")
+
+
 def main():
-    parser = argparse.ArgumentParser(description="Tiny CNI network creator")
-    parser.add_argument("name", help="network namespace name")
-    parser.add_argument("ip", help="namespace IPv4 address with prefix")
+    parser = argparse.ArgumentParser(description="Tiny CNI")
+    subparsers = parser.add_subparsers(dest="command", required=True)
+
+    add_parser = subparsers.add_parser("add", help="create network endpoint")
+    add_parser.add_argument("name")
+    add_parser.add_argument("ip")
+
+    del_parser = subparsers.add_parser("del", help="delete network endpoint")
+    del_parser.add_argument("name")
+
     args = parser.parse_args()
 
-    add_network(args.name, args.ip)
+    if args.command == "add":
+        add_network(args.name, args.ip)
+    elif args.command == "del":
+        delete_network(args.name)
 
 
 if __name__ == "__main__":
