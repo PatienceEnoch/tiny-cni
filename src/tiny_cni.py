@@ -284,6 +284,66 @@ def list_networks():
         ))
 
 
+
+def setup_network():
+    result = subprocess.run(
+        ["ip", "-j", "-4", "route", "show", "default"],
+        capture_output=True, text=True, check=True,
+    )
+    routes = json.loads(result.stdout)
+    if len(routes) != 1 or "dev" not in routes[0]:
+        raise SystemExit("Expected one default route with an outgoing interface.")
+
+    uplink = routes[0]["dev"]
+    if uplink == BRIDGE:
+        raise SystemExit("The outgoing interface cannot be the Tiny CNI bridge.")
+
+    subnet = str(ipaddress.IPv4Network(BRIDGE_IP, strict=False))
+
+    def ensure_rule(table, chain, *rule):
+        check = subprocess.run(
+            ["iptables", "-w", "-t", table, "-C", chain, *rule],
+            capture_output=True, text=True,
+        )
+        if check.returncode == 0:
+            print(f"Rule already present in {chain}")
+        elif check.returncode == 1:
+            run("iptables", "-w", "-t", table, "-I", chain, "1", *rule)
+        else:
+            raise SystemExit(check.stderr.strip())
+
+    docker_chain = subprocess.run(
+        ["iptables", "-w", "-S", "DOCKER-USER"],
+        capture_output=True, text=True,
+    )
+    if docker_chain.returncode == 0:
+        chain = "DOCKER-USER"
+    elif docker_chain.returncode == 1:
+        chain = "FORWARD"
+    else:
+        raise SystemExit(docker_chain.stderr.strip())
+
+    run("sysctl", "-w", "net.ipv4.ip_forward=1")
+
+    ensure_rule(
+        "filter", chain,
+        "-i", BRIDGE, "-o", uplink, "-j", "ACCEPT",
+    )
+    ensure_rule(
+        "filter", chain,
+        "-i", uplink, "-o", BRIDGE,
+        "-m", "conntrack", "--ctstate", "RELATED,ESTABLISHED",
+        "-j", "ACCEPT",
+    )
+    ensure_rule(
+        "nat", "POSTROUTING",
+        "-s", subnet, "-o", uplink, "-j", "MASQUERADE",
+    )
+
+    print(f"Internet setup ready through {uplink}.")
+    print("These settings apply to the running system; rerun setup after reboot.")
+
+
 def main():
     parser = argparse.ArgumentParser(description="Tiny CNI")
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -299,6 +359,8 @@ def main():
 
     subparsers.add_parser("list", help="show all named namespaces and IPv4 addresses")
 
+    subparsers.add_parser("setup", help="configure host forwarding, firewall, and NAT")
+
     args = parser.parse_args()
 
     with open("/run/tiny-cni.lock", "a") as lock:
@@ -309,6 +371,8 @@ def main():
             delete_network(args.name)
         elif args.command == "list":
             list_networks()
+        elif args.command == "setup":
+            setup_network()
 
 
 if __name__ == "__main__":
