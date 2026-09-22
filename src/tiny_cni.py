@@ -2,6 +2,8 @@
 
 import argparse
 import hashlib
+import ipaddress
+import re
 import subprocess
 from pathlib import Path
 
@@ -38,7 +40,37 @@ def interface_names(name):
     return f"tc-{short_id}-h", f"tc-{short_id}-p"
 
 
+
+def validate_name(name):
+    if not re.fullmatch(r"[a-zA-Z0-9][a-zA-Z0-9_-]{0,62}", name):
+        raise SystemExit(
+            "Use a namespace name of 1–63 letters, numbers, "
+            "hyphens, or underscores; start with a letter or number."
+        )
+
+
+def validate_ip(value):
+    try:
+        address = ipaddress.IPv4Interface(value)
+    except ValueError:
+        raise SystemExit("Use an IPv4 address with /24, such as 10.244.0.5/24")
+
+    network = ipaddress.IPv4Network(BRIDGE_IP, strict=False)
+    if address.network != network:
+        raise SystemExit(f"Address must belong to {network} and use /24")
+
+    reserved = {
+        network.network_address,
+        network.broadcast_address,
+        ipaddress.IPv4Address(GATEWAY),
+    }
+    if address.ip in reserved:
+        raise SystemExit("That address is reserved for the network, gateway, or broadcast")
+
+
 def add_network(name, ip_address):
+    validate_name(name)
+    validate_ip(ip_address)
     if namespace_exists(name):
         raise SystemExit(f"Namespace {name!r} already exists")
 
@@ -98,6 +130,7 @@ def add_network(name, ip_address):
 
 
 def delete_network(name):
+    validate_name(name)
     host_veth, _ = interface_names(name)
 
     if namespace_exists(name):
