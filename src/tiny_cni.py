@@ -290,9 +290,11 @@ def check_network(name):
     validate_name(name)
 
     print(f"Checking {name}")
+    failures = []
 
     if not namespace_exists(name):
-        print("  Namespace:  FAIL")
+        print("  Namespace:  FAIL — namespace not found")
+        print("  Health:     FAILED")
         raise SystemExit(1)
 
     print("  Namespace:  OK")
@@ -301,57 +303,78 @@ def check_network(name):
         ["ip", "-n", name, "-j", "-4", "addr", "show"],
         capture_output=True,
         text=True,
-        check=True,
     )
-    interfaces = json.loads(result.stdout)
 
     ipv4_address = None
-    for interface in interfaces:
-        if interface["ifname"] == "lo":
-            continue
 
-        for address in interface.get("addr_info", []):
-            if address.get("family") == "inet":
-                ipv4_address = (
-                    f'{address["local"]}/{address["prefixlen"]}'
-                )
-                break
+    if result.returncode == 0:
+        interfaces = json.loads(result.stdout)
+
+        for interface in interfaces:
+            if interface["ifname"] == "lo":
+                continue
+
+            for address in interface.get("addr_info", []):
+                if address.get("family") == "inet":
+                    ipv4_address = (
+                        f'{address["local"]}/{address["prefixlen"]}'
+                    )
+                    break
 
     if ipv4_address:
         print(f"  IPv4:       {ipv4_address}")
     else:
-        print("  IPv4:       FAIL")
+        print("  IPv4:       FAIL — no IPv4 address found")
+        failures.append("IPv4")
 
     gateway = subprocess.run(
         ["ip", "-n", name, "route", "show", "default"],
         capture_output=True,
         text=True,
-        check=True,
     )
 
-    if f"via {GATEWAY}" in gateway.stdout:
+    if gateway.returncode == 0 and f"via {GATEWAY}" in gateway.stdout:
         print("  Gateway:    OK")
     else:
-        print("  Gateway:    FAIL")
+        print(f"  Gateway:    FAIL — default route via {GATEWAY} not found")
+        failures.append("Gateway")
 
-    bridge_ok = link_exists(BRIDGE)
-    print(f"  Bridge:     {'OK' if bridge_ok else 'FAIL'}")
+    if link_exists(BRIDGE):
+        print("  Bridge:     OK")
+    else:
+        print(f"  Bridge:     FAIL — {BRIDGE} not found")
+        failures.append("Bridge")
 
     dns = subprocess.run(
         ["ip", "netns", "exec", name, "getent", "hosts", "example.com"],
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
     )
-    print(f"  DNS:        {'OK' if dns.returncode == 0 else 'FAIL'}")
+
+    if dns.returncode == 0:
+        print("  DNS:        OK")
+    else:
+        print("  DNS:        FAIL — name resolution failed")
+        failures.append("DNS")
 
     internet = subprocess.run(
         ["ip", "netns", "exec", name, "ping", "-c", "1", "-W", "2", "1.1.1.1"],
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
     )
-    print(
-        f"  Internet:   {'OK' if internet.returncode == 0 else 'FAIL'}"
-    )
+
+    if internet.returncode == 0:
+        print("  Internet:   OK")
+    else:
+        print("  Internet:   FAIL — 1.1.1.1 unreachable")
+        failures.append("Internet")
+
+    if failures:
+        print("  Health:     FAILED")
+        raise SystemExit(1)
+
+    print("  Health:     OK")
+
 
 
 def setup_network():

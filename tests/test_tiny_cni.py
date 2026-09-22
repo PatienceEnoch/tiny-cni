@@ -165,12 +165,16 @@ def test_check_network_reports_failures(monkeypatch, capsys):
         lambda *args, **kwargs: next(results),
     )
 
-    tiny_cni.check_network("cni-a")
+    with pytest.raises(SystemExit) as error:
+        tiny_cni.check_network("cni-a")
+
+    assert error.value.code == 1
 
     output = capsys.readouterr().out
 
-    assert "IPv4:       FAIL" in output
-    assert "Gateway:    FAIL" in output
-    assert "Bridge:     FAIL" in output
-    assert "DNS:        FAIL" in output
-    assert "Internet:   FAIL" in output
+    assert "IPv4:       FAIL — no IPv4 address found" in output
+    assert "Gateway:    FAIL — default route via 10.244.0.1 not found" in output
+    assert "Bridge:     FAIL — cni0 not found" in output
+    assert "DNS:        FAIL — name resolution failed" in output
+    assert "Internet:   FAIL — 1.1.1.1 unreachable" in output
+    assert "Health:     FAILED" in output
