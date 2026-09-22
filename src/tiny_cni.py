@@ -128,50 +128,77 @@ def add_network(name, ip_address):
 
     host_veth, peer_veth = interface_names(name)
 
+    dns_dir = Path("/etc/netns") / name
+    if dns_dir.exists() or dns_dir.is_symlink():
+        raise SystemExit(f"DNS directory already exists: {dns_dir}")
+    if link_exists(host_veth) or link_exists(peer_veth):
+        raise SystemExit("An endpoint interface already exists; inspect it first.")
+
     if not link_exists(BRIDGE):
         run("ip", "link", "add", BRIDGE, "type", "bridge")
 
     run("ip", "addr", "replace", BRIDGE_IP, "dev", BRIDGE)
     run("ip", "link", "set", BRIDGE, "up")
 
-    run("ip", "netns", "add", name)
+    rollback_actions = []
+    try:
+        run("ip", "netns", "add", name)
+        rollback_actions.append(lambda: run("ip", "netns", "del", name))
 
-    run(
-        "ip", "link", "add", host_veth,
-        "type", "veth",
-        "peer", "name", peer_veth,
-    )
+        run(
+            "ip", "link", "add", host_veth,
+            "type", "veth",
+            "peer", "name", peer_veth,
+        )
 
-    run("ip", "link", "set", peer_veth, "netns", name)
+        rollback_actions.append(
+            lambda: run("ip", "link", "del", host_veth)
+            if link_exists(host_veth) else None
+        )
 
-    run("ip", "link", "set", host_veth, "master", BRIDGE)
-    run("ip", "link", "set", host_veth, "up")
+        run("ip", "link", "set", peer_veth, "netns", name)
 
-    run("ip", "netns", "exec", name, "ip", "link", "set", "lo", "up")
+        run("ip", "link", "set", host_veth, "master", BRIDGE)
+        run("ip", "link", "set", host_veth, "up")
 
-    run(
-        "ip", "netns", "exec", name,
-        "ip", "link", "set", peer_veth, "name", "eth0",
-    )
+        run("ip", "netns", "exec", name, "ip", "link", "set", "lo", "up")
 
-    run(
-        "ip", "netns", "exec", name,
-        "ip", "link", "set", "eth0", "up",
-    )
+        run(
+            "ip", "netns", "exec", name,
+            "ip", "link", "set", peer_veth, "name", "eth0",
+        )
 
-    run(
-        "ip", "netns", "exec", name,
-        "ip", "addr", "add", ip_address, "dev", "eth0",
-    )
+        run(
+            "ip", "netns", "exec", name,
+            "ip", "link", "set", "eth0", "up",
+        )
 
-    run(
-        "ip", "netns", "exec", name,
-        "ip", "route", "add", "default", "via", GATEWAY,
-    )
+        run(
+            "ip", "netns", "exec", name,
+            "ip", "addr", "add", ip_address, "dev", "eth0",
+        )
 
-    dns_dir = Path("/etc/netns") / name
-    dns_dir.mkdir(parents=True, exist_ok=True)
-    (dns_dir / "resolv.conf").write_text("nameserver 1.1.1.1\n")
+        run(
+            "ip", "netns", "exec", name,
+            "ip", "route", "add", "default", "via", GATEWAY,
+        )
+
+        dns_dir = Path("/etc/netns") / name
+        dns_dir.mkdir(parents=True, exist_ok=False)
+        rollback_actions.append(dns_dir.rmdir)
+        rollback_actions.append(
+            lambda: (dns_dir / "resolv.conf").unlink(missing_ok=True)
+        )
+        (dns_dir / "resolv.conf").write_text("nameserver 1.1.1.1\n")
+
+    except (Exception, KeyboardInterrupt):
+        print(f"Creation failed; cleaning up {name}.")
+        for action in reversed(rollback_actions):
+            try:
+                action()
+            except Exception as cleanup_error:
+                print(f"Cleanup warning: {cleanup_error}")
+        raise
 
     print()
     print(f"Created {name}")
