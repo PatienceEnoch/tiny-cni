@@ -68,7 +68,7 @@ Or request a specific unused address:
 sudo python3 src/tiny_cni.py add demo-b 10.244.0.20/24
 ```
 
-List all named namespaces and their non-loopback interfaces and IPv4 addresses:
+List all named namespaces and their non loopback interfaces and IPv4 addresses:
 
 ```bash
 sudo python3 src/tiny_cni.py list
@@ -91,7 +91,7 @@ sudo ip netns exec demo-a ip -br addr
 sudo ip netns exec demo-a ping -c 3 10.244.0.1
 ```
 
-Here, `ip netns exec demo-a` means “run the following command inside demo-a's network environment.”
+Here, `ip netns exec demo-a` means “run the following command inside demo a's network environment.”
 
 Remove the demo endpoints when finished:
 
@@ -108,7 +108,7 @@ sudo python3 src/tiny_cni.py del demo-b
 | Shared virtual switch | `cni0` |
 | Bridge gateway address | `10.244.0.1` |
 | Endpoint address pool | `10.244.0.2` through `10.244.0.254` |
-| Network interface inside each script-created namespace | `eth0` |
+| Network interface inside each script created namespace | `eth0` |
 | Configured public DNS server | `1.1.1.1` |
 
 `setup` configures host forwarding, firewall rules, and NAT. The host still needs a working upstream connection. Writing a DNS configuration alone does not make that server reachable.
@@ -129,7 +129,7 @@ sudo python3 src/tiny_cni.py del demo-b
 | **Default route** | The route used when no more specific route matches a destination. |
 | **IPAM: IP Address Management** | Choosing and tracking addresses to avoid conflicts. Tiny CNI currently checks live assignments rather than keeping a persistent allocation database. |
 | **DNS: Domain Name System** | Resolves names such as `example.com` to IP addresses. |
-| **NAT: Network Address Translation** | Rewrites addresses as traffic crosses a router, often allowing private addresses to share an outward-facing address. |
+| **NAT: Network Address Translation** | Rewrites addresses as traffic crosses a router, often allowing private addresses to share an outward facing address. |
 | **Forwarding** | Passing packets between network interfaces so the host can act as a router. |
 | **Connection tracking (conntrack)** | Keeping track of traffic flows so firewall rules can recognize replies and related traffic. |
 | **Masquerading** | A form of source NAT that uses the outgoing interface's address. |
@@ -139,7 +139,7 @@ sudo python3 src/tiny_cni.py del demo-b
 | **FDB: Forwarding Database** | The bridge's table mapping learned MAC addresses to ports or interfaces. |
 | **ICMP: Internet Control Message Protocol** | Carries network control messages; ping uses echo requests and replies. |
 | **TCP: Transmission Control Protocol** | Provides reliable, ordered delivery over a connection. |
-| **HTTP: Hypertext Transfer Protocol** | The request-and-response protocol used by web clients and servers. |
+| **HTTP: Hypertext Transfer Protocol** | The request and response protocol used by web clients and servers. |
 | **HTTPS: HTTP over TLS** | HTTP protected by Transport Layer Security, which encrypts the connection. |
 | **SYN / ACK / FIN** | TCP flags meaning synchronize, acknowledgment, and finish. They help establish, acknowledge, and close connections. |
 | **Lock** | Makes cooperating commands wait their turn before changing shared resources. |
@@ -154,14 +154,14 @@ sudo python3 src/tiny_cni.py del demo-b
 - Communication between two namespaces through the bridge.
 - Automatic address selection and rejection of duplicate or reserved addresses.
 - A command waiting for the shared lock, then continuing after release.
-- Namespace and virtual-cable cleanup after a deliberately injected endpoint-creation failure.
+- Namespace and virtual cable cleanup after a deliberately injected endpoint creation failure.
 - Reuse of an address after its previous endpoint was deleted.
 - Listing all six lab namespaces, including two created manually.
-- Host setup detecting the outgoing interface and recognizing all three pre-existing rules without adding duplicates.
+- Host setup detecting the outgoing interface and recognizing all three pre existing rules without adding duplicates.
 
-The host setup check exercised existing-rule detection; installing missing rules on a fresh host has not yet been verified in this lab.
+The host setup check exercised existing rule detection; installing missing rules on a fresh host has not yet been verified in this lab.
 
-The injected failure occurred before DNS setup, so that test did not verify cleanup after a DNS-file write failure.
+The injected failure occurred before DNS setup, so that test did not verify cleanup after a DNS file write failure.
 
 ## Development
 
@@ -184,11 +184,11 @@ Pytest and Ruff configuration lives in `pyproject.toml`.
 
 ## Current boundaries
 
-This is a single-host learning tool. Address discovery covers the host and its named namespaces; it does not discover every device on an external network. The lock coordinates commands using the same lock file, not unrelated networking tools.
+This is a single host learning tool. Address discovery covers the host and its named namespaces; it does not discover every device on an external network. The lock coordinates commands using the same lock file, not unrelated networking tools.
 
 The shared bridge and host setup rules remain after endpoint deletion or endpoint rollback. `setup` does not roll back partial host configuration if a later setup step fails, and it does not remove rules for an old outgoing interface if the default route changes.
 
-Forwarding and firewall changes apply to the running system; this script does not persist them across reboot. Rerun `setup` and recreate endpoints after reboot. Per-namespace DNS directories under `/etc/netns` can survive reboot, and `add` refuses to overwrite them. For a previously created endpoint, use `del NAME` to clean its leftover configuration before recreating it.
+Forwarding and firewall changes apply to the running system; this script does not persist them across reboot. Rerun `setup` and recreate endpoints after reboot. Per namespace DNS directories under `/etc/netns` can survive reboot, and `add` refuses to overwrite them. For a previously created endpoint, use `del NAME` to clean its leftover configuration before recreating it.
 
 The script currently has no persistent allocation database or standard CNI runtime integration.
 
@@ -203,23 +203,23 @@ These observations come from an interactive Ubuntu lab session. They are manual 
 | NAT on the host | Outbound source changed from endpoint `10.244.0.5` to Ubuntu uplink `10.10.10.10`. Returning traffic was translated back to the endpoint. This captures one NAT step, not upstream translation. |
 | Local vs. external routes | The neighbor was reached directly through `eth0`; Cloudflare `1.1.1.1` used gateway `10.244.0.1`. |
 | ARP exchange | `cni-d` asked who owned `10.244.0.4`, and `cni-c` replied with its MAC address. A reverse neighbor check followed. |
-| Bridge learning | After a ping, the FDB contained both endpoint MAC addresses on their respective host-side veth interfaces. |
+| Bridge learning | After a ping, the FDB contained both endpoint MAC addresses on their respective host side veth interfaces. |
 | Missing default route | Removing only `cni-d`'s default route left local ping working but caused internet ping to report “Network is unreachable.” Replies returned after restoring the route. |
 | DNS exchange | One IPv4 lookup for `example.com` and a reply containing two addresses, about 34 milliseconds later. |
 | Encrypted web request | `curl -I https://example.com` from `cni-d` returned `HTTP/2 200`. |
-| TCP lifecycle | Captured SYN, SYN-ACK, ACK; a 79-byte HTTP request; 156 bytes of response headers; and orderly connection closure. |
+| TCP lifecycle | Captured SYN, SYN/ACK, ACK; a 79 byte HTTP request; 156 bytes of response headers; and orderly connection closure. |
 
-The client was `cni-d (10.244.0.5)`; the local server was `cni-c (10.244.0.4)`. Their host-side virtual cable interfaces were `tc-f61fd4-h` and `tc-dee853-h`, respectively.
+The client was `cni-d (10.244.0.5)`; the local server was `cni-c (10.244.0.4)`. Their host side virtual cable interfaces were `tc-f61fd4-h` and `tc-dee853-h`, respectively.
 
 ### Current milestone
 
-Tiny CNI now has working endpoint creation and deletion, automatic IPv4 allocation, bridge networking, host forwarding and NAT setup, DNS configuration, endpoint listing, and an endpoint health-check command.
+Tiny CNI now has working endpoint creation and deletion, automatic IPv4 allocation, bridge networking, host forwarding and NAT setup, DNS configuration, endpoint listing, and an endpoint health check command.
 
-The development lab has verified local namespace-to-namespace traffic, internet reachability by IP, DNS resolution, HTTPS traffic, route-failure behavior, ARP, bridge learning, NAT, and the TCP connection lifecycle. The Python logic is covered by 24 automated tests, and the same test suite runs automatically in GitHub Actions.
+The development lab has verified local namespace to namespace traffic, internet reachability by IP, DNS resolution, HTTPS traffic, route failure behavior, ARP, bridge learning, NAT, and the TCP connection lifecycle. The Python logic is covered by 24 automated tests, and the same test suite runs automatically in GitHub Actions.
 
 ### Next work
 
-1. Add optional machine-readable output to `check` for automation.
+1. Add optional machine readable output to `check` for automation.
 2. Expand automated coverage around deletion, rollback, DNS cleanup, and host setup.
 3. Verify `setup` on a fresh host where the firewall and NAT rules do not already exist.
 4. Consider persistent IP allocation state instead of relying only on live address discovery.
