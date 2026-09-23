@@ -4,7 +4,7 @@
 
 Build the network a container would need, one Linux command at a time.
 
-**CNI stands for Container Network Interface**: a standard for how container runtimes ask plugins to configure networking. Tiny CNI is a learning project that builds the underlying pieces... isolated network environments, virtual cables, a virtual switch, and IP addresses—in Python. Implementing the standard CNI plugin interface is a future step.
+**CNI stands for Container Network Interface**: a standard for how container runtimes ask plugins to configure networking. Tiny CNI is a learning project that builds the underlying pieces... isolated network environments, virtual cables, a virtual switch, and IP addresses, all in Python. Implementing the standard CNI plugin interface is a future step.
 
 ## Architecture
 
@@ -118,29 +118,29 @@ sudo python3 src/tiny_cni.py del demo-b
 | Term | Meaning |
 |---|---|
 | **Container runtime** | Software that starts and manages containers. |
-| **CNI — Container Network Interface** | A standard through which a container runtime asks networking plugins to connect or disconnect containers. |
+| **CNI: Container Network Interface** | A standard through which a container runtime asks networking plugins to connect or disconnect containers. |
 | **Network namespace** | An isolated network environment inside Linux, with its own interfaces, addresses, and routes. It supplies network isolation; it is not a complete container. |
 | **Endpoint** | One network attachment. In this project, a namespace with its configured interface and address. |
-| **Veth — virtual Ethernet pair** | Two connected virtual interfaces that work like the ends of a network cable. |
+| **Veth: virtual Ethernet pair** | Two connected virtual interfaces that work like the ends of a network cable. |
 | **Bridge** | A virtual network switch that connects the endpoints. |
-| **IP — Internet Protocol** | The protocol used to address and route packets between networks. An IP address identifies an interface for that communication. |
+| **IP: Internet Protocol** | The protocol used to address and route packets between networks. An IP address identifies an interface for that communication. |
 | **Subnet** | A range of addresses belonging to one network. Here, `/24` means the first 24 bits identify the network. |
 | **Gateway** | The next router an endpoint sends traffic to when the destination is outside its local network. |
 | **Default route** | The route used when no more specific route matches a destination. |
-| **IPAM — IP Address Management** | Choosing and tracking addresses to avoid conflicts. Tiny CNI currently checks live assignments rather than keeping a persistent allocation database. |
-| **DNS — Domain Name System** | Resolves names such as `example.com` to IP addresses. |
-| **NAT — Network Address Translation** | Rewrites addresses as traffic crosses a router, often allowing private addresses to share an outward-facing address. |
+| **IPAM: IP Address Management** | Choosing and tracking addresses to avoid conflicts. Tiny CNI currently checks live assignments rather than keeping a persistent allocation database. |
+| **DNS: Domain Name System** | Resolves names such as `example.com` to IP addresses. |
+| **NAT: Network Address Translation** | Rewrites addresses as traffic crosses a router, often allowing private addresses to share an outward-facing address. |
 | **Forwarding** | Passing packets between network interfaces so the host can act as a router. |
 | **Connection tracking (conntrack)** | Keeping track of traffic flows so firewall rules can recognize replies and related traffic. |
 | **Masquerading** | A form of source NAT that uses the outgoing interface's address. |
 | **Idempotence** | Repeating an operation without accumulating duplicate changes. |
-| **ARP — Address Resolution Protocol** | Finds the MAC address associated with a nearby IPv4 address. |
-| **MAC — Media Access Control address** | An address used to deliver Ethernet frames on a local network. |
-| **FDB — Forwarding Database** | The bridge's table mapping learned MAC addresses to ports or interfaces. |
-| **ICMP — Internet Control Message Protocol** | Carries network control messages; ping uses echo requests and replies. |
-| **TCP — Transmission Control Protocol** | Provides reliable, ordered delivery over a connection. |
-| **HTTP — Hypertext Transfer Protocol** | The request-and-response protocol used by web clients and servers. |
-| **HTTPS — HTTP over TLS** | HTTP protected by Transport Layer Security, which encrypts the connection. |
+| **ARP: Address Resolution Protocol** | Finds the MAC address associated with a nearby IPv4 address. |
+| **MAC: Media Access Control address** | An address used to deliver Ethernet frames on a local network. |
+| **FDB: Forwarding Database** | The bridge's table mapping learned MAC addresses to ports or interfaces. |
+| **ICMP: Internet Control Message Protocol** | Carries network control messages; ping uses echo requests and replies. |
+| **TCP: Transmission Control Protocol** | Provides reliable, ordered delivery over a connection. |
+| **HTTP: Hypertext Transfer Protocol** | The request-and-response protocol used by web clients and servers. |
+| **HTTPS: HTTP over TLS** | HTTP protected by Transport Layer Security, which encrypts the connection. |
 | **SYN / ACK / FIN** | TCP flags meaning synchronize, acknowledgment, and finish. They help establish, acknowledge, and close connections. |
 | **Lock** | Makes cooperating commands wait their turn before changing shared resources. |
 | **Rollback** | Undoes completed setup steps after a later step fails. |
@@ -192,7 +192,7 @@ Forwarding and firewall changes apply to the running system; this script does no
 
 The script currently has no persistent allocation database or standard CNI runtime integration.
 
-## Packet walkthroughs — September 22, 2026
+## Packet walkthroughs: September 22, 2026
 
 These observations come from an interactive Ubuntu lab session. They are manual demonstrations, not an automated test suite. Packet details below were copied or summarized from terminal output; no packet capture files were saved in the repository.
 
@@ -209,7 +209,7 @@ These observations come from an interactive Ubuntu lab session. They are manual 
 | Encrypted web request | `curl -I https://example.com` from `cni-d` returned `HTTP/2 200`. |
 | TCP lifecycle | Captured SYN, SYN-ACK, ACK; a 79-byte HTTP request; 156 bytes of response headers; and orderly connection closure. |
 
-The client was `cni-d — 10.244.0.5`; the local server was `cni-c — 10.244.0.4`. Their host-side virtual cable interfaces were `tc-f61fd4-h` and `tc-dee853-h`, respectively.
+The client was `cni-d (10.244.0.5)`; the local server was `cni-c (10.244.0.4)`. Their host-side virtual cable interfaces were `tc-f61fd4-h` and `tc-dee853-h`, respectively.
 
 ### Current milestone
 
